@@ -531,22 +531,8 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
   </div>
 </div>
 
+<script src="underwriting-app.js"></script>
 <script>
-// Dynamically load underwriting-app.js, strip the IIFE wrapper to make functions global,
-// and then execute and override them.
-fetch('underwriting-app.js')
-  .then(response => response.text())
-  .then(code => {
-    // Strip the outer IIFE wrapper wrapper: (function(){ ... })();
-    const strippedCode = code
-      .replace(/\(function\(\)\{\s*/, '')   // Matches and strips the beginning wrapper
-      .replace(/\}\)\(\);\s*$/, '');        // Matches and strips the ending wrapper
-
-    // Evaluate the stripped script globally so its declarations attach to the window object
-    const script = document.createElement('script');
-    script.text = strippedCode;
-    document.body.appendChild(script);
-
     // --- Dynamic Intake Visibility Override Logic ---
     window.intakeDetailsVisible = false;
 
@@ -624,10 +610,9 @@ fetch('underwriting-app.js')
     }
 
     // Initial check: if the page is currently loaded on 'intake', trigger a render with the hidden state
-    if (window.page === 'intake') {
+    if (typeof page !== 'undefined' && page === 'intake') {
       window.renderPage();
     }
-  });
 </script>
 </body>
 </html>

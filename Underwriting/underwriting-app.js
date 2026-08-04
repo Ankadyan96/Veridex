@@ -1,5 +1,4 @@
 /* Veridex Underwriting Engine — clickable prototype. Sample data only, no backend. */
-(function(){
 
 /* ---------------- ICONS ---------------- */
 const ICONS = {
@@ -2223,5 +2222,3 @@ function mountDrawer(){
 /* ================= INIT ================= */
 renderGate();
 mountDrawer();
-
-})();
