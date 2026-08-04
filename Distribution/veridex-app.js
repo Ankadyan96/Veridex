@@ -1046,7 +1046,22 @@ function viewNetwork(){
   const gcard = el('div','card');
   gcard.innerHTML = `<div class="card-h"><h3>Relationship graph</h3><span class="hint">${org.name} at the centre</span></div>`;
   const gbody = el('div','pad'); const net = el('div','netwrap');
-  gbody.appendChild(net); gcard.appendChild(gbody); p.appendChild(gcard);
+  gbody.appendChild(net); gcard.appendChild(gbody);
+  gcard.style.display = 'none';
+
+  const showBtn = btn('Show Relationship Graph', I.net, '');
+  showBtn.style.marginBottom = '16px';
+  showBtn.onclick = () => {
+    if(gcard.style.display === 'none'){
+      gcard.style.display = 'block';
+      showBtn.innerHTML = svg(I.net,16) + '<span>Hide Relationship Graph</span>';
+    } else {
+      gcard.style.display = 'none';
+      showBtn.innerHTML = svg(I.net,16) + '<span>Show Relationship Graph</span>';
+    }
+  };
+  p.appendChild(showBtn);
+  p.appendChild(gcard);
 
   const fbar = buildFilterBar(kids, ()=>draw());
   p.appendChild(fbar);
@@ -1243,7 +1258,7 @@ function viewPerformance(){
         <div><div class="k-lbl">Growth</div><div style="font-family:var(--display);font-weight:600;font-size:16px;color:${o.perf.growth.startsWith('-')?'var(--bad)':'var(--ok)'}">${o.perf.growth}</div></div>
         <div><div class="k-lbl">Loss ratio</div><div style="font-family:var(--display);font-weight:600;font-size:16px">${o.perf.lossRatio}</div></div>
       </div>`;
-    const btnRow = el('div'); btnRow.style.cssText='margin-top:12px;display:flex;gap:8px';
+    const btnRow = el('div'); btnRow.style.cssText='margin-top:auto;padding-top:12px;display:flex;gap:8px';
     btnRow.appendChild(btn('State × class breakdown',I.chart,'sm',()=>showGrid(o)));
     btnRow.appendChild(btn(org.type==='CARRIER'?'View agencies':'View customers',I.chev,'sm ghost',()=>drillInto(o)));
     c.appendChild(btnRow);
@@ -1463,7 +1478,7 @@ function viewCRM(){
       <div style="font-size:11.5px;color:var(--muted)">${c.connected?'Connected · syncing leads':'Not connected'}</div></div>
       <span class="pill ${c.connected?'ok':'mute'}" style="margin-left:auto">${c.connected?'Active':'Off'}</span></div>`;
     const b = btn(c.connected?'Manage connection':'Connect', I.plug, c.connected?'sm ghost':'sm primary', ()=>openCrmConnect(c));
-    b.style.marginTop='12px'; card.appendChild(b);
+    b.style.marginTop='auto'; b.style.paddingTop='12px'; card.appendChild(b);
     grid.appendChild(card);
   });
   p.appendChild(grid);

@@ -128,7 +128,7 @@ a{color:inherit;text-decoration:none}
 
 /* sidebar */
 .side{grid-area:side;background:var(--surface);border-right:1px solid var(--line);padding:14px 10px;overflow-y:auto;display:flex;flex-direction:column}
-.side-ctx{padding:12px 12px 14px;margin-bottom:8px;border-radius:12px;
+.side-ctx{display:none;padding:12px 12px 14px;margin-bottom:8px;border-radius:12px;
   background:linear-gradient(150deg,color-mix(in srgb,var(--accent) 12%,#fff),var(--surface-2));
   border:1px solid color-mix(in srgb,var(--accent) 20%,var(--line))}
 .side-ctx .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
@@ -154,7 +154,7 @@ a{color:inherit;text-decoration:none}
 
 /* main */
 .main{grid-area:main;overflow-y:auto;scroll-behavior:smooth}
-.page{padding:22px 26px 60px;max-width:1240px;margin:0 auto;animation:fade .22s ease}
+.page{padding:20px 20px 60px;max-width:100%;animation:fade .22s ease}
 .ph{display:flex;align-items:flex-end;gap:16px;margin-bottom:20px}
 .ph h1{font-family:var(--display);font-size:22px;font-weight:600;letter-spacing:-.02em}
 .ph .crumb{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
@@ -173,8 +173,9 @@ a{color:inherit;text-decoration:none}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn.sm{height:30px;padding:0 10px;font-size:11.5px}
 
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow-sm);transition:box-shadow .16s ease}
+.card{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow-sm);transition:box-shadow .16s ease}
 .card+.card{margin-top:14px}
+.grid>.card{height:100%}
 .card h3{font-family:var(--display);font-size:14.5px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
 .grid{display:grid;gap:14px}
 .g2{grid-template-columns:1fr 1fr}
@@ -530,6 +531,103 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
   </div>
 </div>
 
-<script src="underwriting-app.js"></script>
+<script>
+// Dynamically load underwriting-app.js, strip the IIFE wrapper to make functions global,
+// and then execute and override them.
+fetch('underwriting-app.js')
+  .then(response => response.text())
+  .then(code => {
+    // Strip the outer IIFE wrapper wrapper: (function(){ ... })();
+    const strippedCode = code
+      .replace(/\(function\(\)\{\s*/, '')   // Matches and strips the beginning wrapper
+      .replace(/\}\)\(\);\s*$/, '');        // Matches and strips the ending wrapper
+
+    // Evaluate the stripped script globally so its declarations attach to the window object
+    const script = document.createElement('script');
+    script.text = strippedCode;
+    document.body.appendChild(script);
+
+    // --- Dynamic Intake Visibility Override Logic ---
+    window.intakeDetailsVisible = false;
+
+    // Intercept go() navigation to reset visibility when entering the intake tab
+    const originalGo = window.go;
+    if (originalGo) {
+      window.go = function(p) {
+        if (p === 'intake') {
+          window.intakeDetailsVisible = false;
+        }
+        originalGo(p);
+      };
+    }
+
+    // Capture-phase listener for row clicks to toggle visibility before renderPage() runs
+    document.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-intake]');
+      if (row) {
+        window.intakeDetailsVisible = true;
+      }
+    }, true);
+
+    // Monkeypatch pageIntake() to toggle visibility of list vs details cards
+    const originalPageIntake = window.pageIntake;
+    if (originalPageIntake) {
+      window.pageIntake = function() {
+        let html = originalPageIntake();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const grid = doc.querySelector('.grid.g2');
+        if (grid) {
+          grid.style.gridTemplateColumns = '1fr';
+        }
+
+        const listCard = doc.querySelector('.grid.g2 > div:nth-child(1)');
+        const rightCard = doc.querySelector('.grid.g2 > div:nth-child(2)');
+
+        // Find the Entity Matching and Enrichment cards at the bottom
+        let clearanceCard = null;
+        let enrichmentCard = null;
+        doc.querySelectorAll('.page > .card').forEach(card => {
+          if (card.querySelector('h3')) {
+            const h3Text = card.querySelector('h3').textContent;
+            if (h3Text.includes('Submission Clearance')) {
+              clearanceCard = card;
+            } else if (h3Text.includes('Enrichment')) {
+              enrichmentCard = card;
+            }
+          }
+        });
+
+        if (!window.intakeDetailsVisible) {
+          // --- Show ONLY the list of submissions ---
+          if (rightCard) rightCard.style.display = 'none';
+          if (clearanceCard) clearanceCard.style.display = 'none';
+          if (enrichmentCard) enrichmentCard.style.display = 'none';
+
+          // Remove active highlight state from the sidebar list rows
+          doc.querySelectorAll('.intake-row.active').forEach(r => r.classList.remove('active'));
+        } else {
+          // --- Show ONLY the details cards (Document Classification, Clearance, Enrichment) ---
+          if (listCard) listCard.style.display = 'none';
+
+          // Prepend a "Back to Submissions" button to the Document Classification card
+          if (rightCard) {
+            const backBtnHtml = `<button class="btn sm ghost" style="margin-bottom:12px;align-self:flex-start" onclick="window.intakeDetailsVisible=false;window.renderPage()">← Back to Submissions</button>`;
+            rightCard.insertAdjacentHTML('afterbegin', backBtnHtml);
+          }
+        }
+
+        html = doc.body.innerHTML;
+        return html;
+      };
+    }
+
+    // Initial check: if the page is currently loaded on 'intake', trigger a render with the hidden state
+    if (window.page === 'intake') {
+      window.renderPage();
+    }
+  });
+</script>
 </body>
 </html>
