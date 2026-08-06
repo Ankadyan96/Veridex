@@ -175,6 +175,49 @@ const POLICIES = [
   { no:'MM-CG-2210-TX', carrier:'Southlake', line:'General Liability', prem:'$9,100', status:'Active',
     start:'2025-11-01', renew:'2026-11-01', desc:'Covers third-party bodily injury and property damage claims against your business.' },
 ];
+
+let POLICY_REQUESTS = [
+  {
+    id: "REQ-904-12",
+    policyNo: "MM-CA-4471-TX",
+    policyLine: "Commercial Auto",
+    type: "Endorsement",
+    subtype: "Add Vehicle",
+    effectiveDate: "2026-08-15",
+    details: "Add 2026 Volvo VNL truck to the policy schedule.",
+    initiatedBy: "cust_dawson",
+    insuredName: "Ishant",
+    agencyId: "agency_metro",
+    mgaId: "mga_apex",
+    date: "2026-08-05",
+    status: "Pending Agency Review",
+    history: [
+      { date: "2026-08-05", status: "Pending Agency Review", user: "Ishant P. (Ishant)", note: "Request submitted by Insured via customer portal." }
+    ]
+  },
+  {
+    id: "REQ-841-33",
+    policyNo: "MM-CG-2210-TX",
+    policyLine: "General Liability",
+    type: "Endorsement",
+    subtype: "Change Address",
+    effectiveDate: "2026-08-01",
+    details: "Update business physical address to 500 Enterprise Way, Dallas, TX 75201.",
+    initiatedBy: "cust_dawson",
+    insuredName: "Ishant",
+    agencyId: "agency_metro",
+    mgaId: "mga_apex",
+    date: "2026-08-01",
+    status: "Approved",
+    history: [
+      { date: "2026-08-01", status: "Pending Agency Review", user: "Ishant P. (Ishant)", note: "Request submitted by Insured via customer portal." },
+      { date: "2026-08-01", status: "Pending MGA Approval", user: "Sam Okafor (Links)", note: "Agency verified details and submitted for MGA approval." },
+      { date: "2026-08-02", status: "Pending Carrier Approval", user: "Ishant P. (Futuristic Underwriters)", note: "MGA approved capacity and guidelines. Submitted to Carrier." },
+      { date: "2026-08-02", status: "Approved", user: "Dana Reyes (Southlake)", note: "Carrier approved and bound changes. Policy updated." }
+    ]
+  }
+];
+
 function daysUntil(dateStr){ return Math.round((new Date(dateStr) - new Date())/86400000); }
 function fmtDate(dateStr){ return new Date(dateStr).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 
@@ -397,15 +440,15 @@ function createCustomerOrg(name){
 
 /* ---------- navigation per portal ---------- */
 const NAV = {
-  carrier:[['dashboard','Overview',I.grid],['network','MGA network',I.net],['onboarding','Onboard an MGA',I.add],
+  carrier:[['dashboard','Overview',I.grid],['network','MGA network',I.net],['requests','Policy requests',I.policy],['onboarding','Onboard an MGA',I.add],
            ['performance','MGA performance',I.chart],
            ['broadcasts','Product broadcasts',I.mega],['leads','Leads',I.route],['crm','CRM & integrations',I.plug],
            ['branding','Branding & invites',I.palette]],
-  mga:[['dashboard','Overview',I.grid],['network','Agency network',I.net],['onboarding','Onboard an agency',I.add],
+  mga:[['dashboard','Overview',I.grid],['network','Agency network',I.net],['requests','Policy requests',I.policy],['onboarding','Onboard an agency',I.add],
        ['performance','Agency performance',I.chart],
        ['leads','Marketing & leads',I.route],['broadcasts','Broadcasts',I.mega],['crm','CRM & integrations',I.plug],
        ['branding','Branding & invites',I.palette]],
-  agency:[['dashboard','Overview',I.grid],['network','My markets',I.map],['onboarding','Onboard a customer',I.add],
+  agency:[['dashboard','Overview',I.grid],['network','My markets',I.map],['requests','Policy requests',I.policy],['onboarding','Onboard a customer',I.add],
           ['performance','Customer book',I.chart],['leads','Marketing & leads',I.route],
           ['crm','CRM & integrations',I.plug],['branding','Branding & invites',I.palette]],
   insured:[['policies','My policies',I.policy],['refer','Refer & earn',I.gift],['docs','Documents',I.doc]],
@@ -482,6 +525,18 @@ function buildShell(){
     b.innerHTML = svg(icon)+`<span>${label}</span>`;
     if(id==='leads' && CURRENT!=='carrier') b.innerHTML+=`<span class="badge">${LEADS.length}</span>`;
     if(id==='network'){ const n = t.type==='AGENCY' ? uplineChain(t.id).length : childrenOf(t.id).length; b.innerHTML+=`<span class="badge">${n}</span>`; }
+    if(id==='requests'){
+      const pendingStatus = { 'AGENCY': 'Pending Agency Review', 'MGA': 'Pending MGA Approval', 'CARRIER': 'Pending Carrier Approval' }[t.type];
+      let cnt = 0;
+      if (t.type === 'CARRIER') {
+        cnt = POLICY_REQUESTS.filter(r => r.status === pendingStatus).length;
+      } else if (t.type === 'MGA') {
+        cnt = POLICY_REQUESTS.filter(r => r.mgaId === t.id && r.status === pendingStatus).length;
+      } else if (t.type === 'AGENCY') {
+        cnt = POLICY_REQUESTS.filter(r => r.agencyId === t.id && r.status === pendingStatus).length;
+      }
+      if(cnt > 0) b.innerHTML+=`<span class="badge" style="background:var(--bad);color:#fff;border-color:var(--bad);font-weight:bold">${cnt}</span>`;
+    }
     b.onclick=()=>{ VIEW=id; buildShell(); render(); };
     grp.appendChild(b);
   });
@@ -507,6 +562,7 @@ function render(){
     leads:viewLeads, broadcasts:viewBroadcasts, crm:viewCRM,
     performance:viewPerformance, branding:viewBranding,
     policies:viewPolicies, refer:viewRefer, docs:viewDocs,
+    requests:viewRequests,
   };
   v.innerHTML='';
   v.appendChild((map[VIEW]||viewDashboard)());
@@ -1534,44 +1590,90 @@ function viewPolicies(){
   const org = currentOrg();
   const p=el('div','page');
   p.appendChild(pageHead('My policies','Your policies',
-    'Everything you hold, in one place. Your policy is always underwritten by a carrier; the agency and MGA helped place it. Click a policy for full detail, or ask the assistant below about renewals.', []));
+    'Everything you hold, in one place. Your policy is always underwritten by a carrier; the agency and MGA helped place it. Click a policy to request endorsements or cancellations.', []));
 
-  const totalPrem = POLICIES.reduce((s,pl)=>s+parseMoney(pl.prem),0);
-  const soonest = [...POLICIES].sort((a,b)=>daysUntil(a.renew)-daysUntil(b.renew))[0];
-  const soonestDays = daysUntil(soonest.renew);
+  const activePolicies = POLICIES.filter(pl => pl.status !== 'Cancelled');
+  const totalPrem = activePolicies.reduce((s,pl)=>s+parseMoney(pl.prem),0);
+  const soonest = [...activePolicies].sort((a,b)=>daysUntil(a.renew)-daysUntil(b.renew))[0];
+  const soonestDays = soonest ? daysUntil(soonest.renew) : 0;
+  const soonestLine = soonest ? soonest.line : 'None';
+
   const kg=el('div','grid g4');
-  kg.innerHTML=kpi(I.policy,String(POLICIES.length),'Active policies',null,'flat')+kpi(I.chart,fmtMoney(totalPrem),'Annual premium',null,'flat')+
-    kpi(I.shield,`${soonestDays}d`,`Next renewal · ${soonest.line}`,soonestDays<=45?'soon':null,soonestDays<=45?'dn':'flat')+
+  kg.innerHTML=kpi(I.policy,String(activePolicies.length),'Active policies',null,'flat')+
+    kpi(I.chart,fmtMoney(totalPrem),'Annual premium',null,'flat')+
+    kpi(I.shield,soonest ? `${soonestDays}d` : '—',`Next renewal · ${soonestLine}`,soonest && soonestDays<=45?'soon':null,soonest && soonestDays<=45?'dn':'flat')+
     kpi(I.gift,'250 pts','Referral rewards','+50','up');
   p.appendChild(kg);
 
   const c=el('div','card'); c.style.marginTop='16px';
-  c.innerHTML=`<div class="card-h"><h3>Policies</h3><span class="hint">${org.name} · click a row for detail</span></div>`;
+  c.innerHTML=`<div class="card-h"><h3>Policies</h3><span class="hint">${org.name} · click a row for detail / service requests</span></div>`;
   const tbl=el('table','tbl');
-  tbl.innerHTML=`<thead><tr><th>Policy #</th><th>Carrier</th><th>Coverage</th><th>Premium</th><th>Effective</th><th>Renews</th><th>Days left</th><th>Status</th></tr></thead>`;
+  tbl.innerHTML=`<thead><tr><th>Policy #</th><th>Carrier</th><th>Coverage</th><th>Premium</th><th>Effective</th><th>Renews / Ends</th><th>Days left</th><th>Status</th></tr></thead>`;
   const tb=el('tbody');
-  POLICIES.forEach(pl=>{ const d = daysUntil(pl.renew); const tr=el('tr'); tr.style.cursor='pointer';
+  POLICIES.forEach(pl=>{
+    const d = daysUntil(pl.renew);
+    const tr=el('tr'); tr.style.cursor='pointer';
+    let statusClass = 'ok';
+    if(pl.status === 'Cancelled') statusClass = 'bad';
+    else if(pl.status === 'Cancellation Pending') statusClass = 'warn';
+
     tr.innerHTML=`<td class="mono">${pl.no}</td><td><div class="co">${av(pl.carrier,'carrier')}<b>${pl.carrier}</b></div></td>
       <td>${pl.line}</td><td class="mono">${pl.prem}</td><td class="mono">${fmtDate(pl.start)}</td><td class="mono">${fmtDate(pl.renew)}</td>
-      <td><span class="pill ${d<=45?'warn':'ok'} plain">${d}d</span></td><td><span class="pill ok">${pl.status}</span></td>`;
+      <td><span class="pill ${pl.status==='Cancelled'?'plain bad':(d<=45?'warn':'ok')} plain">${pl.status==='Cancelled'?'Cancelled':(d+'d')}</span></td>
+      <td><span class="pill ${statusClass}">${pl.status}</span></td>`;
     tr.onclick=()=>openPolicyDetail(pl);
-    tb.appendChild(tr); });
+    tb.appendChild(tr);
+  });
   tbl.appendChild(tb); c.appendChild(tbl); p.appendChild(c);
 
-  // embedded renewal chat — ask directly on this page, no need to open the drawer
+  // Service Requests Section for Insured
+  const rc = el('div','card'); rc.style.marginTop='16px';
+  rc.innerHTML=`<div class="card-h"><h3>Service Requests</h3><span class="hint">Endorsements & cancellations in progress</span></div>`;
+  const myRequests = POLICY_REQUESTS.filter(r => r.initiatedBy === org.id);
+  if (myRequests.length === 0) {
+    rc.appendChild(el('div','pad empty', `<p style="color:var(--muted)">No service requests submitted yet.</p>`));
+  } else {
+    const rtbl = el('table','tbl');
+    rtbl.innerHTML=`<thead><tr><th>ID</th><th>Policy #</th><th>Type</th><th>Effective Date</th><th>Details</th><th>Submitted</th><th>Status</th><th></th></tr></thead>`;
+    const rtb = el('tbody');
+    myRequests.forEach(r => {
+      let statusClass = 'mute';
+      if (r.status.includes('Review') || r.status.includes('Approval')) statusClass = 'warn';
+      if (r.status === 'Approved') statusClass = 'ok';
+      if (r.status.includes('Cancelled') || r.status === 'Rejected') statusClass = 'bad';
+
+      const rtr = el('tr');
+      rtr.innerHTML = `
+        <td class="mono"><b>${r.id}</b></td>
+        <td class="mono">${r.policyNo}</td>
+        <td><span class="pill ${r.type === 'Cancellation' ? 'bad' : 'info'} plain">${r.type}</span></td>
+        <td class="mono">${fmtDate(r.effectiveDate)}</td>
+        <td><span style="display:inline-block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.details}"><b>${r.subtype}:</b> ${r.details}</span></td>
+        <td class="mono">${fmtDate(r.date)}</td>
+        <td><span class="pill ${statusClass}">${r.status}</span></td>
+        <td><button class="btn sm ghost" data-myreq="${r.id}">View Timeline</button></td>
+      `;
+      rtb.appendChild(rtr);
+    });
+    rtbl.appendChild(rtb);
+    rc.appendChild(rtbl);
+  }
+  p.appendChild(rc);
+
+  // embedded renewal chat
   const chatCard = el('div','card'); chatCard.style.marginTop='16px';
   chatCard.innerHTML = `<div class="card-h"><h3>Ask about your policy</h3><span class="hint">renewals, coverage, dates</span></div>`;
   const cbody = el('div','pad');
   const log = el('div'); log.style.cssText='display:flex;flex-direction:column;gap:4px;margin-bottom:12px;max-height:280px;overflow-y:auto';
   cbody.appendChild(log);
-  addPolicyMsg(log,'ai',`Hi ${org.user.split(' ')[0]} — ask me anything about your policies: when something renews, what's covered, or how to start a renewal early.`);
+  addPolicyMsg(log,'ai',`Hi ${org.user.split(' ')[0]} — ask me anything about your policies: when something renews, what's covered, or how to start a renewal or endorsement.`);
   const sugRow = el('div','sugs');
-  ['When does my commercial auto renew?','What does my general liability cover?','Can I renew early?'].forEach(q=>{
+  ['When does my commercial auto renew?','Request a policy endorsement','Can I cancel my policy?'].forEach(q=>{
     const b = el('button','sug',q); b.onclick=()=>askPolicyBot(log,q); sugRow.appendChild(b);
   });
   cbody.appendChild(sugRow);
   const inputRow = el('div','dw-input'); inputRow.style.marginTop='4px';
-  const ta = el('textarea'); ta.rows=1; ta.placeholder='Ask about renewal, coverage, dates…';
+  const ta = el('textarea'); ta.rows=1; ta.placeholder='Ask about renewal, endorsement, cancellation…';
   const sendBtn = el('button','dw-send'); sendBtn.innerHTML = svg('<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',17);
   inputRow.appendChild(ta); inputRow.appendChild(sendBtn);
   cbody.appendChild(inputRow);
@@ -1580,19 +1682,521 @@ function viewPolicies(){
   ta.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); fire(); } });
   chatCard.appendChild(cbody); p.appendChild(chatCard);
 
+  // Wire clicking the myreq button
+  p.querySelectorAll('[data-myreq]').forEach(btnEl => {
+    btnEl.onclick = (e) => { e.stopPropagation(); openRequestDetail(btnEl.dataset.myreq); };
+  });
+
   return p;
 }
+
 function openPolicyDetail(pl){
   const d = daysUntil(pl.renew);
-  openModal(`Policy ${pl.no}`, `
+  const isCancelled = pl.status === 'Cancelled';
+  const isPendingCancel = pl.status === 'Cancellation Pending';
+
+  let actionButtons = [ ['Close','',closeModal] ];
+
+  if (!isCancelled && !isPendingCancel) {
+    actionButtons.push(['Request Endorsement', 'primary', () => { closeModal(); openEndorsementModal(pl); }]);
+    actionButtons.push(['Cancel Policy', 'bad', () => { closeModal(); openCancellationModal(pl); }]);
+  } else if (isPendingCancel) {
+    actionButtons.push(['View Cancellation Notice', 'primary', () => {
+      const req = POLICY_REQUESTS.find(r => r.policyNo === pl.no && r.type === 'Cancellation');
+      closeModal();
+      if (req) {
+        showDNOCModal(pl.no, pl.line, pl.renew, req.subtype, req.details);
+      } else {
+        showDNOCModal(pl.no, pl.line, pl.renew, "Cancellation Initiated", "Details on file.");
+      }
+    }]);
+  }
+
+  let statusBadgeColor = 'ok';
+  if (isCancelled) statusBadgeColor = 'bad';
+  else if (isPendingCancel) statusBadgeColor = 'warn';
+
+  let calloutHtml = '';
+  if (isCancelled) {
+    calloutHtml = `<div class="callout" style="background:var(--bad-soft);border-color:color-mix(in srgb, var(--bad) 20%, transparent)">
+      <span class="ci" style="color:var(--bad)">${svg(I.shield,18)}</span>
+      <div class="ct"><b>Policy is Cancelled</b> — Coverage ceased on the cancellation date. Contact Links Agency to write new coverage.</div>
+    </div>`;
+  } else if (isPendingCancel) {
+    calloutHtml = `<div class="callout" style="background:var(--warn-soft);border-color:color-mix(in srgb, var(--warn) 20%, transparent)">
+      <span class="ci" style="color:var(--warn)">${svg(I.bolt,18)}</span>
+      <div class="ct"><b>Cancellation in Progress (DNOC Issued)</b> — Coverage remains active for the next <b>${d} days</b>. Final cancellation will be effective on <b>${fmtDate(pl.renew)}</b>.</div>
+    </div>`;
+  } else {
+    calloutHtml = `<div class="callout">
+      <span class="ci">${svg(I.bolt,18)}</span>
+      <div class="ct">${d<=45?`<b>Renews in ${d} days</b> — `:`Renews in ${d} days — `}ask the assistant below for renewal options, coverage changes, or to start the renewal early.</div>
+    </div>`;
+  }
+
+  let modalBody = `
     <div class="grid g3" style="margin-bottom:14px">
-      <div class="card pad"><div class="k-lbl">Effective</div><div class="k-val" style="font-size:18px">${fmtDate(pl.start)}</div></div>
-      <div class="card pad"><div class="k-lbl">Expires / renews</div><div class="k-val" style="font-size:18px">${fmtDate(pl.renew)}</div></div>
+      <div class="card pad"><div class="k-lbl">Effective Date</div><div class="k-val" style="font-size:18px">${fmtDate(pl.start)}</div></div>
+      <div class="card pad"><div class="k-lbl">${isPendingCancel ? 'Cancellation Date' : (isCancelled ? 'Termination Date' : 'Expires / Renews')}</div><div class="k-val" style="font-size:18px">${fmtDate(pl.renew)}</div></div>
       <div class="card pad"><div class="k-lbl">Premium</div><div class="k-val" style="font-size:18px">${pl.prem}</div></div>
     </div>
-    <p style="color:var(--muted);font-size:13px;margin-bottom:12px">${pl.desc||''}</p>
-    <div class="callout"><span class="ci">${svg(I.bolt,18)}</span><div class="ct">${d<=45?`<b>Renews in ${d} days</b> — `:`Renews in ${d} days — `}ask the assistant below for renewal options, coverage changes, or to start the renewal early.</div></div>
-  `, [ ['Close','',closeModal], ['Ask about renewal','primary',()=>{ closeModal(); openDrawer(); runIntent(`when does my ${pl.line} policy renew and what changes for the renewal?`); }] ]);
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="font-size:12.5px;color:var(--muted)">Status:</span>
+      <span class="pill ${statusBadgeColor}">${pl.status}</span>
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">${pl.desc||''}</p>
+    ${calloutHtml}
+  `;
+
+  openModal(`Policy ${pl.no}`, modalBody, actionButtons);
+}
+
+function openEndorsementModal(pl) {
+  const body = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <p style="color:var(--muted);font-size:13.5px;line-height:1.5">Submit an endorsement request to modify your policy coverages, add/remove vehicles, or change business details. This request will be routed through your agency and MGA for underwriting review and carrier approval.</p>
+
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:12.5px;color:var(--text);font-weight:600">Endorsement Type</span>
+        <select id="endType" style="width:100%;height:38px;border:1px solid var(--line);border-radius:9px;padding:0 11px;background:#fff">
+          <option value="Add Vehicle">Add Vehicle / Asset</option>
+          <option value="Adjust Limits">Adjust Coverage Limits</option>
+          <option value="Change Address">Change Mailing Address</option>
+          <option value="Other">Other Modification</option>
+        </select>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:12.5px;color:var(--text);font-weight:600">Requested Effective Date</span>
+        <input type="date" id="endEffDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;height:38px;border:1px solid var(--line);border-radius:9px;padding:0 11px;background:#fff">
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:12.5px;color:var(--text);font-weight:600">Details of requested change</span>
+        <textarea id="endDesc" placeholder="Please specify the changes (e.g. Year, Make, Model, VIN of vehicle to add; or new address details)..." rows="4" style="width:100%;border:1px solid var(--line);border-radius:9px;padding:11px;background:#fff;resize:none;font-family:inherit;font-size:13.5px"></textarea>
+      </div>
+    </div>
+  `;
+
+  openModal(`Request Endorsement · Policy ${pl.no}`, body, [
+    ['Cancel', '', () => { closeModal(); openPolicyDetail(pl); }],
+    ['Submit Request', 'primary', () => {
+      const type = document.getElementById('endType').value;
+      const date = document.getElementById('endEffDate').value;
+      const desc = document.getElementById('endDesc').value.trim();
+      if (!desc) {
+        alert('Please specify the details of the change.');
+        return;
+      }
+      closeModal();
+      submitPolicyRequest(pl, 'Endorsement', type, date, desc);
+    }]
+  ], { width: '500px' });
+}
+
+function openCancellationModal(pl) {
+  const body = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="callout" style="background:var(--bad-soft);border-color:color-mix(in srgb, var(--bad) 30%, transparent);color:var(--bad);margin-bottom:6px">
+        <span class="ci" style="color:var(--bad)">${svg(I.bolt,18)}</span>
+        <div class="ct" style="color:var(--text)"><b>Attention:</b> Cancelling your policy will initiate a statutory 30-day grace period. A <b>Direct Notice of Cancellation (DNOC)</b> will be issued immediately. Coverage will cease 30 days from today.</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:12.5px;color:var(--text);font-weight:600">Reason for Cancellation</span>
+        <select id="cancReason" style="width:100%;height:38px;border:1px solid var(--line);border-radius:9px;padding:0 11px;background:#fff">
+          <option value="Out of business">Business Ceased Operations / Closed</option>
+          <option value="Sold vehicles/property">Assets / Vehicles Sold</option>
+          <option value="Found cheaper rate">Alternative Insurance Placed</option>
+          <option value="Other">Other Reason</option>
+        </select>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:12.5px;color:var(--text);font-weight:600">Cancellation Effective Date</span>
+        <input type="date" id="cancDate" value="${new Date().toISOString().split('T')[0]}" disabled style="width:100%;height:38px;border:1px solid var(--line);border-radius:9px;padding:0 11px;background:var(--surface-2);color:var(--muted)">
+        <small style="color:var(--faint);font-size:11px;margin-top:2px">Cancellation becomes active after the 30-day statutory notice period.</small>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:12.5px;color:var(--text);font-weight:600">Please explain the reason</span>
+        <textarea id="cancDesc" placeholder="Please provide additional explanation for this cancellation..." rows="3" style="width:100%;border:1px solid var(--line);border-radius:9px;padding:11px;background:#fff;resize:none;font-family:inherit;font-size:13.5px"></textarea>
+      </div>
+    </div>
+  `;
+
+  openModal(`Cancel Policy · ${pl.no}`, body, [
+    ['Go Back', '', () => { closeModal(); openPolicyDetail(pl); }],
+    ['Initiate Cancellation', 'bad', () => {
+      const reason = document.getElementById('cancReason').value;
+      const desc = document.getElementById('cancDesc').value.trim();
+      if (!desc) {
+        alert('Please explain the reason for cancellation.');
+        return;
+      }
+      closeModal();
+      submitPolicyRequest(pl, 'Cancellation', reason, new Date().toISOString().split('T')[0], desc);
+    }]
+  ], { width: '500px' });
+}
+
+function submitPolicyRequest(policy, type, subtype, effectiveDate, details) {
+  const reqId = "REQ-" + String(Math.floor(100 + Math.random() * 900)) + "-" + String(Math.floor(10 + Math.random() * 90));
+  const org = currentOrg(); // cust_dawson (Insured)
+  const agency = parentOf(org.id); // agency_metro
+  const mga = agency ? parentOf(agency.id) : null; // mga_apex
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (type === 'Cancellation') {
+    // Immediate cancellation processing with 30-day grace period
+    const cancelDate = new Date();
+    cancelDate.setDate(cancelDate.getDate() + 30);
+    const cancelDateStr = cancelDate.toISOString().split('T')[0];
+
+    // Update the policy itself immediately!
+    policy.status = 'Cancellation Pending';
+    policy.renew = cancelDateStr; // renew/expiry is set to cancellation date
+    policy.desc = `[CANCELLATION PENDING - Coverage terminates on ${fmtDate(cancelDateStr)}] Reason (${subtype}): ${details}. ${policy.desc}`;
+
+    const newReq = {
+      id: reqId,
+      policyNo: policy.no,
+      policyLine: policy.line,
+      type: type,
+      subtype: subtype,
+      effectiveDate: cancelDateStr,
+      details: details,
+      initiatedBy: org.id,
+      insuredName: org.name,
+      agencyId: agency ? agency.id : "",
+      mgaId: mga ? mga.id : "",
+      date: todayStr,
+      status: "Cancellation Pending (DNOC Sent)",
+      history: [
+        {
+          date: todayStr,
+          status: "Cancellation Initiated",
+          user: `${org.user} (Insured)`,
+          note: `Cancellation initiated by Insured. Direct Notice of Cancellation (DNOC) issued.`
+        },
+        {
+          date: todayStr,
+          status: "Cancellation Pending (DNOC Sent)",
+          user: "Veridex System",
+          note: `System generated and transmitted DNOC email to User. 30-day statutory countdown active. Coverage ends on ${fmtDate(cancelDateStr)}.`
+        }
+      ]
+    };
+
+    POLICY_REQUESTS.unshift(newReq);
+
+    // Render the beautiful DNOC Simulation Modal!
+    showDNOCModal(policy.no, policy.line, cancelDateStr, subtype, details);
+    toast("Cancellation Initiated", "Policy status updated to Cancellation Pending.");
+
+  } else {
+    // Endorsement (needs approval)
+    const newReq = {
+      id: reqId,
+      policyNo: policy.no,
+      policyLine: policy.line,
+      type: type,
+      subtype: subtype,
+      effectiveDate: effectiveDate,
+      details: details,
+      initiatedBy: org.id,
+      insuredName: org.name,
+      agencyId: agency ? agency.id : "",
+      mgaId: mga ? mga.id : "",
+      date: todayStr,
+      status: "Pending Agency Review",
+      history: [
+        { date: todayStr, status: "Pending Agency Review", user: `${org.user} (Insured)`, note: `Request submitted by Insured via customer portal.` }
+      ]
+    };
+
+    POLICY_REQUESTS.unshift(newReq);
+    toast("Endorsement Requested", `Request ${reqId} has been sent to your agency for review.`);
+  }
+
+  buildShell();
+  render();
+}
+
+function showDNOCModal(policyNo, line, cancelDateStr, reason, explanation) {
+  const body = `
+    <div style="font-family:var(--font);color:var(--text)">
+      <!-- Simulated Email Envelope Header -->
+      <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:18px">
+        <div style="display:flex;gap:8px;font-size:13px;margin-bottom:4px"><span style="color:var(--muted);width:50px;font-weight:500">From:</span><span style="font-weight:600">Veridex Notifications &lt;no-reply@veridex.com&gt;</span></div>
+        <div style="display:flex;gap:8px;font-size:13px;margin-bottom:4px"><span style="color:var(--muted);width:50px;font-weight:500">To:</span><span style="font-weight:600">${currentOrg().user} &lt;ops@${currentOrg().name.toLowerCase().replace(/[^a-z]/g,'')}.com&gt;</span></div>
+        <div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--muted);width:50px;font-weight:500">Subject:</span><span style="color:var(--bad);font-weight:600">DIRECT NOTICE OF CANCELLATION (DNOC) - Policy ${policyNo}</span></div>
+      </div>
+
+      <!-- DNOC Formal Letter Header -->
+      <div style="text-align:center;border-bottom:2px double var(--bad);padding-bottom:12px;margin-bottom:16px">
+        <div style="font-family:var(--display);font-size:20px;font-weight:700;letter-spacing:1px;color:var(--bad)">DIRECT NOTICE OF CANCELLATION</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px">STATUTORY GRACE PERIOD ACTIVE · 30-DAY COVERAGE NOTICE</div>
+      </div>
+
+      <!-- Letter Body -->
+      <div style="font-size:13.5px;line-height:1.6;margin-bottom:16px">
+        <p>Dear <b>${currentOrg().name}</b>,</p>
+        <p style="margin-top:8px">This document serves as formal written notification that at your request, your <b>${line}</b> policy (Number: <b>${policyNo}</b>) is scheduled to be cancelled.</p>
+
+        <!-- Statutory Warning Box -->
+        <div style="background:var(--bad-soft);border-left:4px solid var(--bad);border-radius:4px;padding:12px 14px;margin:14px 0">
+          <div style="font-weight:700;color:var(--bad);font-size:13px;margin-bottom:4px">STATUTORY GRACE PERIOD SCHEDULE</div>
+          <table style="width:100%;font-size:12.5px;border-collapse:collapse">
+            <tr><td style="color:var(--muted);padding:3px 0">Date of Notice:</td><td style="font-weight:600;text-align:right">${fmtDate(new Date().toISOString().split('T')[0])}</td></tr>
+            <tr><td style="color:var(--muted);padding:3px 0">Notice Grace Period:</td><td style="font-weight:600;text-align:right">30 Days</td></tr>
+            <tr><td style="color:var(--muted);padding:3px 0;font-size:13.5px;color:var(--text)"><b>Cancellation Effective Date:</b></td><td style="font-weight:700;text-align:right;color:var(--bad);font-size:13.5px">${fmtDate(cancelDateStr)} at 12:01 AM</td></tr>
+          </table>
+        </div>
+
+        <p><b>Coverage Status:</b> Under applicable state insurance laws, your policy coverage remains <b>fully in force and active</b> during this 30-day notice period. You are covered until the Cancellation Effective Date listed above.</p>
+        <p style="margin-top:8px"><b>Cancellation Details:</b></p>
+        <ul style="margin-left:20px;margin-top:4px">
+          <li>Reason: <b>${reason}</b></li>
+          <li>User Note: <i>"${explanation}"</i></li>
+        </ul>
+        <p style="margin-top:8px;color:var(--muted);font-size:12.5px">Please coordinate with your agency (<b>Links</b>) to settle any outstanding premiums or audits, and ensure alternative coverage is in place prior to the Cancellation Effective Date to avoid coverage lapses.</p>
+      </div>
+
+      <div style="font-size:11px;color:var(--faint);text-align:center;border-top:1px dashed var(--line);padding-top:10px">
+        This is a simulated system-generated notification sent to verify compliance with statutory notice requirements.
+      </div>
+    </div>
+  `;
+
+  openModal("DNOC Issued (Simulated Email)", body, [
+    ["Print Notice", "", () => alert("Direct Notice of Cancellation printed.")],
+    ["I Understand & Acknowledge", "primary", closeModal]
+  ], { width: '580px' });
+}
+
+function viewRequests() {
+  const org = currentOrg();
+  const p = el('div', 'page');
+
+  p.appendChild(pageHead(
+    'Policy Requests',
+    'Endorsements & Cancellations',
+    `Review and approve endorsement or cancellation requests. Cancellations are automatic (DNOC sent), endorsements require multi-tier authorization.`,
+    []
+  ));
+
+  // Filter requests based on role
+  let filtered = [];
+  if (org.type === 'CARRIER') {
+    filtered = POLICY_REQUESTS;
+  } else if (org.type === 'MGA') {
+    filtered = POLICY_REQUESTS.filter(r => r.mgaId === org.id);
+  } else if (org.type === 'AGENCY') {
+    filtered = POLICY_REQUESTS.filter(r => r.agencyId === org.id);
+  }
+
+  const pendingStatusForOrg = {
+    'AGENCY': 'Pending Agency Review',
+    'MGA': 'Pending MGA Approval',
+    'CARRIER': 'Pending Carrier Approval'
+  }[org.type];
+
+  const c = el('div', 'card');
+  c.innerHTML = `<div class="card-h">
+    <h3>Service Requests</h3>
+    <span class="hint">${filtered.length} total request${filtered.length===1?'':'s'} in your scope</span>
+  </div>`;
+
+  if (filtered.length === 0) {
+    c.appendChild(emptyState('No policy requests found in your scope.'));
+    p.appendChild(c);
+    return p;
+  }
+
+  const tbl = el('table', 'tbl');
+  tbl.innerHTML = `<thead><tr>
+    <th>ID</th>
+    <th>Policy #</th>
+    <th>Insured</th>
+    <th>Type</th>
+    <th>Subtype / Reason</th>
+    <th>Submitted</th>
+    <th>Effective Date</th>
+    <th>Status</th>
+    <th>Action</th>
+  </tr></thead>`;
+
+  const tb = el('tbody');
+  filtered.forEach(r => {
+    const tr = el('tr');
+    const isPendingForUs = r.status === pendingStatusForOrg;
+
+    // Status color pill
+    let statusClass = 'mute';
+    if (r.status.includes('Review') || r.status.includes('Approval')) statusClass = 'warn';
+    if (r.status === 'Approved') statusClass = 'ok';
+    if (r.status.includes('Cancelled') || r.status === 'Rejected') statusClass = 'bad';
+
+    // Type badge
+    const typeBadge = r.type === 'Cancellation' ? '<span class="pill bad plain">Cancellation</span>' : '<span class="pill info plain">Endorsement</span>';
+
+    tr.innerHTML = `
+      <td class="mono"><b>${r.id}</b></td>
+      <td class="mono">${r.policyNo}</td>
+      <td><b>${r.insuredName}</b></td>
+      <td>${typeBadge}</td>
+      <td>${r.subtype || '—'}</td>
+      <td class="mono">${fmtDate(r.date)}</td>
+      <td class="mono">${fmtDate(r.effectiveDate)}</td>
+      <td><span class="pill ${statusClass}">${r.status}</span></td>
+      <td>
+        <button class="btn sm ${isPendingForUs ? 'primary' : 'ghost'}" data-req="${r.id}">
+          ${isPendingForUs ? 'Review Request' : 'View Details'}
+        </button>
+      </td>
+    `;
+
+    tb.appendChild(tr);
+  });
+
+  tbl.appendChild(tb);
+  c.appendChild(tbl);
+  p.appendChild(c);
+
+  // Wire action buttons
+  p.querySelectorAll('[data-req]').forEach(btnEl => {
+    btnEl.onclick = () => openRequestDetail(btnEl.dataset.req);
+  });
+
+  return p;
+}
+
+function openRequestDetail(reqId) {
+  const r = POLICY_REQUESTS.find(req => req.id === reqId);
+  if (!r) return;
+
+  const org = currentOrg();
+  const pendingStatusForOrg = {
+    'AGENCY': 'Pending Agency Review',
+    'MGA': 'Pending MGA Approval',
+    'CARRIER': 'Pending Carrier Approval'
+  }[org.type];
+
+  const isPendingForUs = r.status === pendingStatusForOrg;
+
+  // Render history timeline
+  let historyHtml = `<div class="feed" style="margin-top:14px">`;
+  r.history.forEach(h => {
+    historyHtml += `
+      <div class="feed-item">
+        <div class="feed-dot">${svg(I.doc, 14)}</div>
+        <div style="flex:1">
+          <div class="ft"><b>${h.user}</b>: <span class="pill info plain" style="font-size:11px">${h.status}</span></div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:4px">${h.note}</div>
+          <div class="fm">${fmtDate(h.date)}</div>
+        </div>
+      </div>
+    `;
+  });
+  historyHtml += `</div>`;
+
+  let typeBadgeClass = r.type === 'Cancellation' ? 'bad' : 'info';
+  let statusBadgeClass = 'mute';
+  if (r.status.includes('Review') || r.status.includes('Approval')) statusBadgeClass = 'warn';
+  if (r.status === 'Approved') statusBadgeClass = 'ok';
+  if (r.status.includes('Cancelled') || r.status === 'Rejected') statusBadgeClass = 'bad';
+
+  let modalBody = `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span class="pill ${typeBadgeClass}" style="font-size:13px">${r.type} Request</span>
+        <span class="pill ${statusBadgeClass}">${r.status}</span>
+      </div>
+
+      <div class="grid g2" style="margin-bottom:14px">
+        <div class="card pad"><div class="k-lbl">Policy Number</div><div class="k-val" style="font-size:16px">${r.policyNo}</div></div>
+        <div class="card pad"><div class="k-lbl">Coverage Line</div><div class="k-val" style="font-size:16px">${r.policyLine}</div></div>
+      </div>
+
+      <div class="grid g2" style="margin-bottom:14px">
+        <div class="card pad"><div class="k-lbl">Insured Name</div><div class="k-val" style="font-size:16px">${r.insuredName}</div></div>
+        <div class="card pad"><div class="k-lbl">${r.type === 'Cancellation' ? 'Cancellation Date' : 'Requested Effective Date'}</div><div class="k-val" style="font-size:16px">${fmtDate(r.effectiveDate)}</div></div>
+      </div>
+
+      <div class="card pad" style="margin-bottom:14px">
+        <div class="k-lbl">${r.type === 'Cancellation' ? 'Cancellation Reason' : 'Endorsement Subtype'}</div>
+        <p style="font-size:13.5px;color:var(--text);margin-top:6px;white-space:pre-wrap"><b>${r.subtype || 'Reason'}:</b> ${r.details}</p>
+      </div>
+
+      <div style="font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:8px">Audit History & Timeline</div>
+      ${historyHtml}
+    </div>
+  `;
+
+  const actions = [];
+
+  if (isPendingForUs) {
+    if (org.type === 'AGENCY') {
+      actions.push(['Reject Request', 'bad', () => processRequest(r.id, 'Rejected', 'Rejected by Agency')]);
+      actions.push(['Approve & Submit to MGA', 'primary', () => processRequest(r.id, 'Pending MGA Approval', 'Agency verified details and submitted for MGA approval.')]);
+    } else if (org.type === 'MGA') {
+      actions.push(['Reject Request', 'bad', () => processRequest(r.id, 'Rejected', 'Rejected by MGA')]);
+      actions.push(['Approve & Submit to Carrier', 'primary', () => processRequest(r.id, 'Pending Carrier Approval', 'MGA approved capacity and guidelines. Submitted to Carrier.')]);
+    } else if (org.type === 'CARRIER') {
+      actions.push(['Reject Request', 'bad', () => processRequest(r.id, 'Rejected', 'Rejected by Carrier')]);
+      actions.push(['Approve & Bind Changes', 'primary', () => processRequest(r.id, 'Approved', 'Carrier approved and bound changes. Policy updated.')]);
+    }
+  } else {
+    if (r.type === 'Cancellation') {
+      actions.push(['View DNOC Notice', 'primary', () => {
+        closeModal();
+        showDNOCModal(r.policyNo, r.policyLine, r.effectiveDate, r.subtype, r.details);
+      }]);
+    }
+    actions.push(['Close', '', closeModal]);
+  }
+
+  openModal(`Request ${r.id}`, modalBody, actions, { width: '620px' });
+}
+
+function processRequest(reqId, newStatus, defaultNote) {
+  const r = POLICY_REQUESTS.find(req => req.id === reqId);
+  if (!r) return;
+
+  const org = currentOrg();
+  const userName = `${org.user} (${org.name})`;
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  r.status = newStatus;
+  r.history.push({
+    date: todayStr,
+    status: newStatus,
+    user: userName,
+    note: defaultNote
+  });
+
+  // If Carrier approved, update the policy!
+  if (newStatus === 'Approved') {
+    const policy = POLICIES.find(p => p.no === r.policyNo);
+    if (policy) {
+      policy.desc = `[ENDORSED on ${todayStr}] ${r.subtype}: ${r.details}. ${policy.desc}`;
+
+      // If adding vehicle/limits, bump the premium
+      if (r.subtype === 'Add Vehicle' || r.subtype === 'Adjust Limits') {
+        const oldPrem = parseMoney(policy.prem);
+        const newPrem = oldPrem + 1500;
+        policy.prem = fmtMoney(newPrem);
+      }
+      toast(`Policy Endorsed`, `Policy ${policy.no} successfully updated.`);
+    }
+  }
+
+  closeModal();
+  toast(`Request Updated`, `Status advanced to: ${newStatus}`);
+  buildShell();
+  render();
 }
 function addPolicyMsg(container, who, html){
   const m = el('div','msg '+(who==='ai'?'ai':'me'));
@@ -1689,7 +2293,7 @@ const SUGGESTIONS = {
     'Broadcast our new TX commercial auto appetite','Help me set up branding for a new invite'],
   agency:['Onboard a customer and send a portal link','Show me my top customers by premium',
     'Connect my CRM','Add a lead manually','Help me set up branding for a new invite'],
-  insured:['Refer a business to my agency','When does my policy renew?'],
+  insured:['Refer a business to my agency','When does my policy renew?','Request a policy endorsement','Cancel my policy'],
 };
 
 function openDrawer(){
@@ -1726,6 +2330,8 @@ function classify(q){
   if(/(broadcast|appetite|announce)/.test(s)) return 'broadcast';
   if(/(route|assign).*(lead|vela|submission)|route the/.test(s)) return 'routeLead';
   if(/refer/.test(s)) return 'refer';
+  if(/endorse|endorsement|change.*policy|add vehicle|adjust limits/.test(s)) return 'endorsePolicy';
+  if(/cancel|cancellation|terminate/.test(s)) return 'cancelPolicy';
   if(/renew|policy/.test(s)) return 'policy';
   return 'fallback';
 }
@@ -1734,6 +2340,7 @@ function runIntent(q){
   meMsg(q);
   const fn = { onboardPartner:flowOnboardPartner, onboardCustomer:flowOnboardCustomer,
     broadcast:flowBroadcast, routeLead:flowRouteLead, refer:flowRefer, policy:flowPolicy,
+    endorsePolicy:flowEndorsePolicy, cancelPolicy:flowCancelPolicy,
     filterNetwork:flowFilterNetwork, performance:flowPerformance, branding:flowBranding,
     crmIntegration:flowCRM, fallback:flowFallback }[classify(q)];
   fn(q);
@@ -1879,6 +2486,51 @@ async function flowCRM(){
 
 async function flowRefer(){ await aiSay('Head to <b>Refer &amp; earn</b> and enter the business name and email. If it binds you earn rewards, and your name travels with the lead through the whole chain.'); }
 async function flowPolicy(){ await aiSay('Your <b>Commercial Auto</b> policy (MM-CA-4471-TX) with Southlake renews in <b>March 2026</b>. Want me to open the policy?'); }
+async function flowEndorsePolicy(q) {
+  if (CURRENT !== 'insured') {
+    await aiSay(`To view and process policy endorsement requests, please navigate to the <b>Policy requests</b> section from your sidebar.`);
+    VIEW = 'requests';
+    buildShell();
+    render();
+    return;
+  }
+  
+  await aiSay(`I can help you initiate an endorsement request. Which policy would you like to endorse? Select one below to open the endorsement wizard:`);
+  
+  const div = el('div', 'sugs');
+  POLICIES.forEach(p => {
+    if (p.status !== 'Cancelled' && p.status !== 'Cancellation Pending') {
+      const b = el('button', 'sug', `${p.line} (${p.no})`);
+      b.onclick = () => { closeModal(); openEndorsementModal(p); closeDrawer(); };
+      b.style.margin = '4px';
+      div.appendChild(b);
+    }
+  });
+  aiMsg('', div);
+}
+
+async function flowCancelPolicy(q) {
+  if (CURRENT !== 'insured') {
+    await aiSay(`To view policy cancellation requests, please navigate to the <b>Policy requests</b> section from your sidebar.`);
+    VIEW = 'requests';
+    buildShell();
+    render();
+    return;
+  }
+  
+  await aiSay(`I can help you initiate a cancellation request. Please select which policy you would like to cancel:`);
+  
+  const div = el('div', 'sugs');
+  POLICIES.forEach(p => {
+    if (p.status !== 'Cancelled' && p.status !== 'Cancellation Pending') {
+      const b = el('button', 'sug', `${p.line} (${p.no})`);
+      b.onclick = () => { closeModal(); openCancellationModal(p); closeDrawer(); };
+      b.style.margin = '4px';
+      div.appendChild(b);
+    }
+  });
+  aiMsg('', div);
+}
 async function flowFallback(){ await aiSay('I can onboard partners or customers, filter or review performance, broadcast a new appetite, route a lead, connect your CRM, or set up branding. Try one of the suggestions below.'); renderSugs(); }
 
 /* ============================================================
